@@ -1,0 +1,8 @@
+"0","#how many rows contain NA's"
+"0","sum(is.na(data))"
+"1","[1]"
+"1"," 171"
+"1","
+"
+"0","#data without the NA's"
+"0","data <- drop_na(data)"

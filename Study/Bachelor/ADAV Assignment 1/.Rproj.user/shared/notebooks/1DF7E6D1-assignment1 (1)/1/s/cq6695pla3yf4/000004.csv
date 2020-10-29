@@ -1,0 +1,4 @@
+"0",""
+"0","#cvglm() to choose a lambda value based on 5 folds"
+"0","result_cv <- cv.glmnet(x = x_train, y = data_train$shopping_beh, nfolds = 5)"
+"0","plot(result_cv)"

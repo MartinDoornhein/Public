@@ -1,0 +1,14 @@
+"0",""
+"0",""
+"0","#Plot 2"
+"0","cormat <- cor(data[-33], data$shopping_beh)"
+"0",""
+"0","#Reshape the data to make it suitable for the plot"
+"0","melted_cormat <- melt(cormat)"
+"0","melted_cormat$Var1<-str_replace_all(melted_cormat$Var1, ""[.]"", "" "") # Convert names"
+"0","melted_cormat$posneg <- ifelse(melted_cormat$value > 0, ""apos"", ""neg"")  # influence flag"
+"0","melted_cormat <- melted_cormat[order(melted_cormat$value), ]  # sort"
+"0","melted_cormat$Var1 <- factor(melted_cormat$Var1, levels = melted_cormat$Var1)  # convert to factor to retain sorted order in plot."
+"2","Error in `levels<-`(`*tmp*`, value = as.character(levels)) : 
+  factor level [6] is duplicated
+"

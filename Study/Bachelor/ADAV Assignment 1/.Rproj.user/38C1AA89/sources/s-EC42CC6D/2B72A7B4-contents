@@ -1,0 +1,30 @@
+library(tidyverse)
+library(polynom)
+attach(diamonds)
+
+my.formula <- y ~ poly(x, 3)
+
+plot <- ggplot(diamonds, aes(carat, price)) + 
+  geom_point(aes(color=clarity), alpha = .5) +
+  theme_dark() +
+  labs(color = "Clarity scale", y = "Price in $", x = "Carat") +
+  scale_x_continuous(trans='log10') + 
+  ylim(0, max(diamonds$price))
+
+plot <- plot + 
+  geom_smooth(color = "white", method="lm", formula = my.formula, se = F)
+
+df <- data.frame("x"=diamonds$carat, "y"=diamonds$price)
+
+#https://stackoverflow.com/questions/11949331/adding-a-3rd-order-polynomial-and-its-equation-to-a-ggplot-in-r
+#^ formula for text on screen
+m <- lm(my.formula, df)
+my.eq <- as.character(signif(as.polynomial(coef(m)), 3))
+label.text <- paste(gsub("x", "~italic(x)", my.eq, fixed = TRUE),
+                    paste("italic(R)^2",  
+                          format(summary(m)$r.squared, digits = 2), 
+                          sep = "~`=`~"),
+                    sep = "~~~~")
+
+plot + annotate(geom = "text", color = "white", x = 0.2, y = 15000, label = label.text, 
+                family = "serif", hjust = 0, parse = TRUE, size = 4)

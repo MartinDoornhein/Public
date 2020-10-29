@@ -1,0 +1,252 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+## Assignment 1
+
+The inspected dataset in this analysis contains data about a young people survey from 2013, in Reykjavic (Slovak). This dataset contains information about music preferences, hobbies and interests of young people, as well as their health habits, personality traits and spending habits. 
+
+We chose this dataset, because we think spending habits is an interesting topic to investigate with a data science approach. For some companies, having insight in spending habits can be very useful in order to design their marketing strategies.
+
+In this assignment we will therefore try to predict spending habits based on a person's hobbies and interests. To take a closer look, different analyses approaches will be used.   
+
+One limitation of the used dataset is that the variables are measured on a 5 point Likert-scale. To investigate these types of variables, other approaches are more suitable than the ones used here. To work with these variables with the kind of analyses this assignment is about, we will treat these variables as continuous.  
+
+
+## RQ: Can we predict spending habits of a person from his/her hobbies and interests?
+
+
+### Library and data
+```{r, message = FALSE}
+library(tidyverse)
+library(glmnet)
+library(Metrics)
+library(ggplot2)
+library(reshape2)
+data <- read.csv("responses.csv", header = T)
+```
+
+### Preparing data for analysis
+The outcome variable is spending habits. This variable is a compound of the questions about spending habits.
+
+This variable will be measured with the sum of scores of the 7 items about spending habits. The first item does in contrast to the other 6 items measure in the opposite way. This is why we reversed the scale of the first item.
+
+After this reverse, the sum of scores of the variable spending habits is made. At last, the relevant columns were selected (hobbies and interests) in the subset with which we will continue the analysis. 
+
+```{r}
+#reverse scale so it matches the directions of the other items
+data <- data %>%
+      mutate(Finances_rev = 6 - Finances)
+
+#sumscore of spending habits
+data <- data %>%  
+          mutate(spending_habits = (Finances_rev + Shopping.centres + Branded.clothing + Entertainment.spending + Spending.on.looks + Spending.on.gadgets + Spending.on.healthy.eating))
+  
+#Select only the variables in the data that concern hobbies and interests and the spending habits sumscore
+data <- data %>%
+  select(32:63, spending_habits)
+```
+
+### Cleaning data
+Unfortunately, working with matrixes does require the data to be complete (without NA's).
+Deleting NA's after subsetting (previous step), will result in less dropped NA's, as rows with unrelated NA's are ignored.
+
+After dropping the NA's, we have 877 observations left. 
+```{r}
+#how many rows contain NA's
+sum(is.na(data))
+
+#data without the NA's
+data <- drop_na(data)
+```
+
+### Inspecting the data
+
+First, we can look at a simple OLS linear regression model that contains all hobbies and interests items. 
+
+Very few of the predictors are significant in this model. The initial model has an $R^2$ of .3471 and F-statistic of 14.02 on 32 and 844 DF,  p-value: < 2.2e-16. This means that the regression model results in a significantly better spending habits prediction than if we used the mean value of spending habits for each predictor. 
+
+A disadvantage of the OLS model is that it can have a huge variance when there are many predictors. To reduce the variance, we usea regularization to try to improve the predictive performance of the model. 
+
+In a later step, we will try to see if we can make a better prediction by doing a lasso regression analysis. 
+
+```{r}
+#full model Hobbies and Interests: y = spending habits  ~ all hobbies and interests items 
+fit_ols <- lm(spending_habits ~ ., data = data) 
+summary(fit_ols)
+
+```
+
+### Visualization of data 
+
+For the first plot, we lay out the hobbies and their prevalence to give an overview of the data.
+For the second plot, we created a correlation matrix to look at the correlation between the different hobbies and interests and spending habits. 
+
+```{r}
+#Plot 1
+data_Mean <- colMeans(data)
+data_Mean <- data_Mean[1:32]
+names(data_Mean) <- str_replace_all(names(data_Mean), "[.]", " ")
+data_names <- data.frame(names(data_Mean))
+data_Mean <- data.frame(data_Mean)
+names(data_Mean)[names(data_Mean) == "data_Mean"] <- "mean"
+data_Mean[,2] <- data_names
+names(data_Mean)[names(data_Mean) == "names.data_Mean."] <- "name"
+data_Mean <- data_Mean[order(data_Mean$mean), ]
+data_Mean$name <- factor(data_Mean$name, levels = data_Mean$name)
+
+ggplot(data_Mean, aes(x=name, y=mean)) + 
+  theme_bw() +
+  geom_bar(stat="identity", width=.5, fill="#f8766d") + 
+  labs(title="Ordered Bar Chart", 
+       subtitle="Average Interest/Hobby Rating",
+       x= 'Interest/Hobby name',
+       y= "Average Rating") + 
+  theme(axis.text.x = element_text(angle = 50, hjust = 1))
+
+
+#create a correlation matrix 
+cormat <- cor(data[-33], data$spending_habits)
+
+#Reshape the data to make it suitable for the plot
+melted_cormat <- melt(cormat)
+melted_cormat$Var1<-str_replace_all(melted_cormat$Var1, "[.]", " ") # Convert names
+melted_cormat$posneg <- ifelse(melted_cormat$value > 0, "apos", "neg")  # influence flag
+melted_cormat <- melted_cormat[order(melted_cormat$value), ]  # sort
+melted_cormat$Var1 <- factor(melted_cormat$Var1, levels = melted_cormat$Var1)  # convert to factor to retain sorted order in plot.
+
+#Plot2
+ggplot(melted_cormat, aes(x=Var1, y=value, label=value)) + 
+  geom_bar(stat='identity', aes(fill=posneg), width=0.6)  +
+  scale_fill_manual(name="Type of effect", 
+                    labels = c("Positive effect", "Negative effect"), 
+                    values = c("apos"="#00ba38", "neg"="#f8766d")) + 
+  labs(subtitle="Effect of hobbies on spending habits", 
+       title= "Diverging Bar Plot",
+       x = 'Type of interest',
+       y = 'Influence Value') + 
+  coord_flip()
+
+```
+
+
+### Splitting data in a test and trainset
+For using the test - train method, we divided the data in 70% (train) vs 30% (test)
+
+```{r}
+set.seed(123)
+
+splits <- sample(c(rep("train", 614),
+                rep("test", 263)))
+
+data_master <- data %>% mutate(splits = splits)
+data_train <- data_master %>% filter(splits == "train")
+data_test <- data_master %>% filter(splits == "test")
+
+```
+
+## glmnet
+We choose Lasso regression because this regression model improves the readability of the outcome. Fitting the model with all the variables will often cause overfitting. Overfitting leads often to high train-set variance. To decrease this variance, the Lasso regression will bring different coefficients to slope = 0. This model decreases variance by shrinking the coefficients and dropping irrelevant variables. 
+
+### Deciding which value to choose for Lambda
+Choosing the best value for lambda will be done with crossvalidation. 
+The cvglm function gives two values for lambda. The first value is the best value for lambda (<lambda_min>).
+To further shrink the coefficients, it is allowed to take the value which is 1 se from the best value.
+This value for lambda will help to decrease the complexity of the model further. 
+
+
+```{r}
+#Creating matrix for lasso glmnet functions
+x_train <- model.matrix(na.action = NULL, spending_habits ~ ., data_train %>% select(-splits))
+# The glmnet function for lasso regression will create a new intercept. The original intercept must be removed before using this regression model. 
+x_train <- x_train[, -1]
+head(x_train)
+
+#for different values of lambda
+#This plot shows the increase of coefficients when the penalty does decrease
+result_nolambda <- glmnet(x = x_train, y = data_train$spending_habits, family = 'gaussian', alpha = 1)
+plot(result_nolambda)
+
+#cvglm() to choose a lambda value based on 5 folds
+result_cv <- cv.glmnet(x = x_train, y = data_train$spending_habits, nfolds = 5)
+plot(result_cv)
+
+#variables for the different values of lambda, based on crossvalidation
+lambda_1se <- result_cv$lambda.1se
+lambda_min <- result_cv$lambda.min
+
+#nonzero coefficients
+result_cv
+
+#Lasso regression models for two values for lambda (min & 1se)
+lasso_min <- glmnet(x = x_train, y = data_train$spending_habits, alpha = 1, lambda = lambda_min)
+lasso_1se <- glmnet(x = x_train, y = data_train$spending_habits, alpha = 1, lambda = lambda_1se)
+
+#Shrinked model
+coef(lasso_min)
+coef(lasso_1se)
+
+```
+
+### Fitting lasso model on test set
+
+```{r}
+x_test <- model.matrix(spending_habits ~ ., data = data_test %>% select(-splits))
+x_test <- x_test[, -1]
+
+y_pred_1se <- as.numeric(predict(lasso_1se, newx = x_test, s = lambda_1se))
+y_pred_min <- as.numeric(predict(lasso_min, newx = x_test, s = lambda_min))
+
+#tabble for predicted vs. observed
+tibble(Predicted = y_pred_1se, Observed = data_test$spending_habits) %>%
+  ggplot(aes(x = Predicted, y = Observed)) +
+  geom_point()+
+  geom_abline(slope = 1, intercept = 0)+
+  labs(title = "Predicted vs. observed")
+```
+
+### Conclusion
+
+To conclude which model will predict the most accurate, the MSE scores can be compared to each other. 
+
+```{r}
+#lasso 1se
+mse_lasso_1se <- mse(data_test$spending_habits, y_pred_1se)
+
+#lasso min
+mse_lasso_min <- mse(data_test$spending_habits, y_pred_min)
+
+#ols
+data_train <- data_train[,-34] #delete column: splits
+fit_ols_train <- lm(spending_habits ~ ., data = data_train) 
+y_pred_ols <- predict(fit_ols_train, newdata = data_test)
+mse_ols <-mse(data_test$spending_habits, y_pred_ols)
+
+#comparing the models on 
+mse_lasso_1se
+mse_lasso_min
+mse_ols
+```
+
+#Comparison of models for MSE
+
+```{r}
+#compiling result data
+mse_data <- tibble(Method = as_factor(c("lasso", "lasso Min", "ols")), MSE_Value = c(mse_lasso_1se, mse_lasso_min, mse_ols))
+
+ggplot(data = mse_data, aes(Method, MSE_Value, fill = Method)) +
+  theme_classic() +
+  labs(title="Result Bar Chart", 
+       subtitle="Resulting values for the different MSE models",
+       x= 'Method',
+       y= "Score") +
+  geom_bar(stat="identity", col = "black") + 
+  coord_cartesian(ylim=c(16,18))
+```
+
+The result of the lasso regression model is unexpected. The lasso regression did not improve compared to the initial model (model with every predictor). The difference in MSE's between the models do not make any substantial prediction improvements. 
+The results are not conform our expectations and we are not sure why this happened. 
+A possible explanation is that our predictors, which are measured on a Likertscale, don't suit this kind of regression model.
+This might have led to an unimproved value for the MSE.
+

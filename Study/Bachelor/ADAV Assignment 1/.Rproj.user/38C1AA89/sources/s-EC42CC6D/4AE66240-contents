@@ -1,0 +1,195 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+## Assignment 1
+
+The inspected dataset in this analysis contains data about a young people survey from 2013, in Reykjavic (Slovak).
+
+The investigated relation is between hobbies and interests (x) and shopping behaviour (y). To take a closer look, different analyses approaches will be used.
+
+One limitation of this analysis is that the variables are measured on a 5 point Likert-scale. To investigate these types of variables, other approaches are more suitable than the ones used here. To work with this variables with the kind of analyses this assignment is about, we will treat these variables as continuous.  
+
+
+### RQ: Which hobbies and/or interests influence shopping style?
+
+
+### Library and data
+```{r, message = FALSE}
+library(tidyverse)
+library(glmnet)
+library(Metrics)
+library(ggplot2)
+library(reshape2)
+data <- read.csv("responses.csv", header = T)
+```
+
+### Preparing data for analysis
+The outcome variable is shopping behaviour. This variable is a compound of the questions about shopping behaviour.
+
+This variable will be measured with the sum of scores of the 7 items about shopping behaviour. The first item does in contrast to the other 6 items measure in the opposite way. This is why we reversed the scale of the first item.
+
+After this reverse, the sum of scores of the variable shopping behaviour is made. At last, the relevant columns were selected (hobbies and interests) in the subset with which we will continue the analysis. 
+```{r}
+#reverse scale so it matches the directions of the other items
+data <- data %>%
+      mutate(Finances_rev = 6 - Finances)
+
+
+#sumscore and avg sumscore of shopping behaviour
+data <- data %>%  
+          mutate(shopping_beh = (Finances_rev + Shopping.centres + Branded.clothing + Entertainment.spending + Spending.on.looks + Spending.on.gadgets + Spending.on.healthy.eating))
+
+#Select only the variables in the data that concern hobbies and interests and the shopping behaviour sumscore
+data <- data %>%
+  select(32:63, shopping_beh)
+```
+
+
+### Cleaning data
+Unfortunately, working with matrixes does require the data to be complete (without NA's).
+Deleting NA's after subsetting (previous step), will result in less dropped NA's, as rows with unrelated NA's are ignored.
+```{r}
+#how many rows contain NA's
+sum(is.na(data))
+
+#save the original data in case we need it later
+data_orignal <- data
+
+#data without the NA's
+data <- drop_na(data)
+```
+
+After dropping the NA's, we have 877 observations left. 
+
+### Inspecting the data
+
+```{r}
+#First, we created a correlation matrix to look at the correlation between the different hobbies and interests and shopping behaviour. 
+cormat <- cor(data[-33], data$shopping_beh)
+
+#Reshape the data to make it suitable for the plot
+melted_cormat <- melt(cormat)
+melted_cormat$Var1<-str_replace_all(melted_cormat$Var1, "[.]", " ") # Convert names
+melted_cormat$posneg <- ifelse(melted_cormat$value > 0, "apos", "neg")  # influence flag
+melted_cormat <- melted_cormat[order(melted_cormat$value), ]  # sort
+melted_cormat$Var1 <- factor(melted_cormat$Var1, levels = melted_cormat$Var1)  # convert to factor to retain sorted order in plot.
+
+# Diverging Barcharts
+ggplot(melted_cormat, aes(x=Var1, y=value, label=value)) + 
+  geom_bar(stat='identity', aes(fill=posneg), width=0.6)  +
+  scale_fill_manual(name="Type of effect", 
+                    labels = c("Positive effect", "Negative effect"), 
+                    values = c("apos"="#00ba38", "neg"="#f8766d")) + 
+  labs(subtitle="Effect of hobbies on shopping behaviour", 
+       title= "Diverging Bar Plot",
+       x = 'Type of interest',
+       y = 'Influence Value') + 
+  coord_flip()
+
+#Plot 2
+
+
+
+#full model Hobbies and Interests: y = shopping_beh  ~ all hobby and interests items 
+fit_ols <- lm(shopping_beh ~ ., data = data) 
+summary(fit_ols)
+
+```
+
+### Splitting data in a test and trainset
+For using the test - train method, we divided the data in 70% (train) vs 30% (test)
+```{r}
+set.seed(123)
+
+877 * .7
+877 * .3
+
+splits <- sample(c(rep("train", 614),
+                rep("test", 263)))
+
+data_master <- data %>% mutate(splits = splits)
+data_train <- data_master %>% filter(splits == "train")
+data_test <- data_master %>% filter(splits == "test")
+
+```
+
+
+
+## glmnet
+We choose Lasso regression because this regression model does improve the readability of the outcome. Fitting the model with a the variables will cause overfitting. Overfitting leads often to high train-set variance. To decrease this variance, the Lasso regression will bring different coefficient to slope = 0. This model does decrease variance by shrinking the coefficients and dropping irrelevant variables. 
+
+## Deciding which value to choose for Lambda
+```{r}
+#Creating matrix for lasso glmnet functions
+x_train <- model.matrix(na.action = NULL, shopping_beh ~ ., data_train %>% select(-splits))
+#x_train1 <- model.matrix(shopping_beh ~ ., data_train %>% select(-splits))
+x_train <- x_train[, -1]
+
+#for diffrent number of predictors
+result_nolambda <- glmnet(x = x_train, y = data_train$shopping_beh, alpha = 1)
+plot(result_nolambda)
+
+#cvglm()
+result_cv <- cv.glmnet(x = x_train, y = data_train$shopping_beh, nfolds = 5)
+lambda_1se <- result_cv$lambda.1se
+lambda_min <- result_cv$lambda.min
+result_cv
+lambda_1se
+lambda_min
+
+# 1sd from min = 0.4345
+plot(result_cv)
+
+lasso_min <- glmnet(x = x_train, y = data_train$shopping_beh, alpha = 1, lambda = lambda_min)
+
+lasso_1se <- glmnet(x = x_train, y = data_train$shopping_beh, alpha = 1, lambda = lambda_1se)
+
+#Shrinked model
+coef(lasso_min)
+coef(lasso_1se)
+
+```
+
+### Fitting lasso model on test set
+
+```{r}
+x_test <- model.matrix(shopping_beh ~ ., data = data_test %>% select(-splits))
+x_test <- x_test[, -1]
+
+y_pred_1se <- as.numeric(predict(lasso_1se, newx = x_test, s = lambda_1se))
+y_pred_min <- as.numeric(predict(lasso_min, newx = x_test, s = lambda_min))
+
+tibble(Predicted = y_pred_1se, Observed = data_test$shopping_beh) %>%
+  ggplot(aes(x = Predicted, y = Observed)) +
+  geom_point()+
+  geom_abline(slope = 1, intercept = 0)
+
+
+```
+
+### Conclusion
+
+compare model with all predictors vs lasso
+```{r}
+#lasso 1se
+mse_lasso_1se <- mse(data_test$shopping_beh, y_pred_1se)
+
+
+#lasso min
+mse_lasso_min <- mse(data_test$shopping_beh, y_pred_min)
+
+#ols
+data_train <- data_train[,-34] #delete column: splits
+fit_ols_train <- lm(shopping_beh ~ ., data = data_train) #volgens mij is de data op de trainset trainen, nutteloos hier
+y_pred_ols <- predict(fit_ols_train, newdata = data_test)
+mse_ols <-mse(data_test$shopping_beh, y_pred_ols)
+
+
+mse_lasso_1se
+mse_lasso_min
+mse_ols
+```
+
+By doing the lasso regression, we expected to be able to better predict the outcome variable. But as you can see from the results of the mse values, the values from the lasso regressions do no differ much from the ols model. This could either mean we made a mistake somewhere or that our dataset is not the most suitable for this kind of analyses.  

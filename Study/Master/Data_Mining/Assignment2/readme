@@ -1,0 +1,5 @@
+This map contains the questions from the second assignments for the course Data Mining from University of Utrecht
+There are 3 small NLP cultural analysis which all answer to another question.
+  Q1: Design a classification scheme which effectively classifies the images from the thumbnail.csv dataset
+  Q2: Design a research method which uses a image feature extraction method
+  Q3: Work with 3 subsets (selected on time period) from the trailer.csv dataset and perform a cultural analysis with some of the video feature extraction methods

@@ -88,8 +88,8 @@ shinyServer(function(input, output) {
       addTiles() %>%
       addMarkers(data = top_data(), lat = ~lat, lng = ~long, icon = houseIcon,
                  popup = ~ paste("<B>Price:</B>", dollar(price), "<br>", 
-                                "<B>Surface living (ft?):</B>", sqft_living, "<br>",
-                                "<B>Total surface (ft?):</B>", sqft_living + sqft_above + sqft_basement, "<br>", 
+                                "<B>Surface living (ft):</B>", sqft_living, "<br>",
+                                "<B>Total surface (ft):</B>", sqft_living + sqft_above + sqft_basement, "<br>", 
                                 "<B>Number of bedrooms:</B>", bedrooms))
     
   })

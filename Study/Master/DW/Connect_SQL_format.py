@@ -2,11 +2,11 @@ import pandas as pd
 import psycopg2
 
 #connect with database
-conn = psycopg2.connect(database = 'DW1',
+conn = psycopg2.connect(database = 'database',
                         user = 'postgres',
-                        password = 'Hallo2121',
-                        host = '127.0.0.1',
-                        port=5432)
+                        password = 'password',
+                        host = 'host',
+                        port=port)
 
 cursor = conn.cursor()
 

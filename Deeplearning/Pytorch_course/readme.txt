@@ -1,0 +1,1 @@
+Deeplearning course with Pytorch library from www.deeplizard.com
